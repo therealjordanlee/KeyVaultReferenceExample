@@ -1,0 +1,132 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.1",
+	"parameters": {
+		"Prefix": {
+			"type": "string",
+			"metadata": {
+				"description": "Prefix to use in naming resources"
+			}
+		},
+		"SecretMessage": {
+			"type": "securestring",
+			"metadata": {
+				"description": "The secret message"
+			}
+		},
+		"sku": {
+			"type": "string",
+			"defaultValue": "S1",
+			"metadata": {
+				"description": "The SKU of App Service Plan, by default is Standard S1"
+			}
+		}
+	},
+	"variables": {
+		"tenantId": "[subscription().tenantId]",
+		"webAppName": "[concat(parameters('Prefix'),'-kvref-demo')]",
+		"keyvaultName": "[concat(parameters('Prefix'),'-kv')]",
+		"appServicePlanName": "[concat(parameters('Prefix'),'-asp')]",
+		"secretMessageResourceId": "[resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyvaultName'), 'SecretMessage')]"
+	},
+	"resources": [
+		{
+			"apiVersion": "2018-02-01",
+			"type": "Microsoft.Web/serverfarms",
+			"kind": "app",
+			"name": "[variables('appServicePlanName')]",
+			"location": "[resourceGroup().location]",
+			"properties": {},
+			"dependsOn": [],
+			"sku": {
+				"name": "[parameters('sku')]"
+			}
+		},
+		{
+			"apiVersion": "2018-11-01",
+			"type": "Microsoft.Web/sites",
+			"name": "[variables('webAppName')]",
+			"dependsOn": [],
+			"properties": {
+				"name": "[variables('webAppName')]",
+				"serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+				"hostingEnvironment": null,
+				"siteConfig": {
+					"minTlsVersion": "1.2",
+					"ftpsState": "Disabled",
+					"metadata": [
+						{
+							"name": "CURRENT_STACK",
+							"value": "dotnetcore"
+						}
+					]
+				},
+				"httpsOnly": true,
+				"clientAffinityEnabled": false
+			},
+			"location": "[resourceGroup().location]",
+			"resources": [
+				{
+					"name": "appsettings",
+					"type": "config",
+					"apiVersion": "2018-11-01",
+					"properties": {
+						"SecretMessage": "[concat('@Microsoft.KeyVault(SecretUri=', reference(variables('secretMessageResourceId')).secretUriWithVersion,')')]"
+					},
+					"dependsOn": [
+						"[resourceId('Microsoft.Web/Sites', variables('webAppName'))]",
+						"[resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyvaultName'), 'SecretMessage')]",
+						"[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+					]
+				}
+			],
+			"identity": {
+				"type": "systemAssigned"
+			}
+		},
+		{
+			"apiVersion": "2018-02-14",
+			"type": "Microsoft.KeyVault/vaults",
+			"name": "[variables('keyvaultName')]",
+			"location": "[resourceGroup().location]",
+			"tags": {},
+			"scale": null,
+			"properties": {
+				"sku": {
+					"family": "A",
+					"name": "Standard"
+				},
+				"tenantId": "[variables('tenantId')]",
+				"accessPolicies": [
+					{
+						"tenantId": "[variables('tenantId')]",
+						"objectId": "[reference(concat('Microsoft.Web/sites/',  variables('webAppName'), '/providers/Microsoft.ManagedIdentity/Identities/default'), '2018-11-30').principalId]",
+						"permissions": {
+							"secrets": [
+								"get",
+								"list"
+							]
+						}
+					}
+				],
+				"enabledForDeployment": false
+			},
+			"dependsOn": [
+				"[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
+			]
+		},
+		{
+			"type": "Microsoft.KeyVault/vaults/secrets",
+			"name": "[concat(variables('keyvaultName'), '/SecretMessage')]",
+			"apiVersion": "2018-02-14",
+			"location": "[resourceGroup().location]",
+			"dependsOn": [
+				"[resourceId('Microsoft.KeyVault/vaults', variables('keyvaultName'))]"
+			],
+			"properties": {
+				"value": "[parameters('SecretMessage')]"
+			}
+		}
+	],
+	"outputs": {}
+}
