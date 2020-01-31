@@ -1,0 +1,2 @@
+# KeyVaultReferenceExample
+This solution was created to as an example of using Azure Key Vault References with App Services for this article - https://medium.com/@therealjordanlee/secrets-management-in-azure-app-services-aa367db85a3c
